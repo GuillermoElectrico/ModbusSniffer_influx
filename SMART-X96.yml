@@ -1,0 +1,252 @@
+Voltage Phase 1 :
+ - 1 # Adress dec data
+ - 2 # Length word
+ - 1 # Data Type. 1=Float(ABCD), 2=Long(ABCD), 3=Integer, 4=Long(CDAB), 5=Word (Unsigned Int), 6=Dword (Unsigned Long)
+Voltage Phase 2 :
+ - 3
+ - 2
+ - 1
+Voltage Phase 3 :
+ - 5
+ - 2
+ - 1
+Voltage Phase 1-2 :
+ - 201
+ - 2
+ - 1
+Voltage Phase 2-3 :
+ - 203
+ - 2
+ - 1
+Voltage Phase 3-1 :
+ - 205
+ - 2
+ - 1
+Current Phase 1 :
+ - 7
+ - 2
+ - 1
+Current Phase 2 :
+ - 9
+ - 2
+ - 1
+Current Phase 3 :
+ - 11
+ - 2
+ - 1
+Neutral Current :
+ - 225
+ - 2
+ - 1
+Active power Phase 1 :
+ - 13
+ - 2
+ - 1
+Active power Phase 2 :
+ - 15
+ - 2
+ - 1
+Active power Phase 3 :
+ - 17
+ - 2
+ - 1
+Total Active power :
+ - 53
+ - 2
+ - 1
+Reactive power Phase 1 :
+ - 25
+ - 2
+ - 1
+Reactive power Phase 2 :
+ - 27
+ - 2
+ - 1
+Reactive power Phase 3 :
+ - 29
+ - 2
+ - 1
+Total Reactive power :
+ - 61
+ - 2
+ - 1
+Apparent power Phase 1 :
+ - 19
+ - 2
+ - 1
+Apparent power Phase 2 :
+ - 21
+ - 2
+ - 1
+Apparent power Phase 3 :
+ - 23
+ - 2
+ - 1
+Total Apparent power :
+ - 57
+ - 2
+ - 1
+Power factor Phase 1 :
+ - 31
+ - 2
+ - 1
+Power factor Phase 2 :
+ - 33
+ - 2
+ - 1
+Power factor Phase 3 :
+ - 35
+ - 2
+ - 1
+Frequency :
+ - 71
+ - 2
+ - 1
+Import active energy :
+ - 73
+ - 2
+ - 1
+Export active energy :
+ - 75
+ - 2
+ - 1
+Inductive reactive energy :
+ - 77
+ - 2
+ - 1
+Capacitive reactive energy :
+ - 79
+ - 2
+ - 1
+Voltage Phase 1 THD :
+ - 235
+ - 2
+ - 1
+Voltage Phase 2 THD :
+ - 237
+ - 2
+ - 1
+Voltage Phase 3 THD :
+ - 239
+ - 2
+ - 1
+Voltage Phase 1-2 THD :
+ - 335
+ - 2
+ - 1
+Voltage Phase 2-3 THD :
+ - 337
+ - 2
+ - 1
+Voltage Phase 3-1 THD :
+ - 339
+ - 2
+ - 1
+Current Phase 1 THD :
+ - 241
+ - 2
+ - 1
+Current Phase 2 THD :
+ - 243
+ - 2
+ - 1
+Current Phase 3 THD :
+ - 245
+ - 2
+ - 1
+Voltage Harmonic 3 L1 :
+ - 405
+ - 2
+ - 1
+Voltage Harmonic 5 L1 :
+ - 409
+ - 2
+ - 1
+Voltage Harmonic 7 L1 :
+ - 413
+ - 2
+ - 1
+Voltage Harmonic 9 L1 :
+ - 417
+ - 2
+ - 1
+Voltage Harmonic 3 L2 :
+ - 529
+ - 2
+ - 1
+Voltage Harmonic 5 L2 :
+ - 533
+ - 2
+ - 1
+Voltage Harmonic 7 L2 :
+ - 537
+ - 2
+ - 1
+Voltage Harmonic 9 L2 :
+ - 541
+ - 2
+ - 1
+Voltage Harmonic 3 L3 :
+ - 653
+ - 2
+ - 1
+Voltage Harmonic 5 L3 :
+ - 657
+ - 2
+ - 1
+Voltage Harmonic 7 L3 :
+ - 661
+ - 2
+ - 1
+Voltage Harmonic 9 L3 :
+ - 665
+ - 2
+ - 1
+Current Harmonic 3 L1 :
+ - 777
+ - 2
+ - 1
+Current Harmonic 5 L1 :
+ - 781
+ - 2
+ - 1
+Current Harmonic 7 L1 :
+ - 785
+ - 2
+ - 1
+Current Harmonic 9 L1 :
+ - 789
+ - 2
+ - 1
+Current Harmonic 3 L2 :
+ - 901
+ - 2
+ - 1
+Current Harmonic 5 L2 :
+ - 905
+ - 2
+ - 1
+Current Harmonic 7 L2 :
+ - 909
+ - 2
+ - 1
+Current Harmonic 9 L2 :
+ - 913
+ - 2
+ - 1
+Current Harmonic 3 L3 :
+ - 1025
+ - 2
+ - 1
+Current Harmonic 5 L3 :
+ - 1029
+ - 2
+ - 1
+Current Harmonic 7 L3 :
+ - 1033
+ - 2
+ - 1
+Current Harmonic 9 L3 :
+ - 1037
+ - 2
+ - 1

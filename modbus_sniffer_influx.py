@@ -15,6 +15,21 @@ import sys
 import getopt
 import logging
 import serial
+#***********************************************************************************************************
+from os import path
+import sys
+import os
+import time
+import yaml
+import struct
+from influxdb_client import InfluxDBClient
+from influxdb_client.client.write_api import SYNCHRONOUS
+from datetime import datetime, timedelta
+from os import path
+
+# Change working dir to the same dir as this script
+os.chdir(sys.path[0])
+#***********************************************************************************************************
 
 # --------------------------------------------------------------------------- #
 # configure the logging system
@@ -40,12 +55,15 @@ handler.setFormatter(myFormatter())
 log.setLevel(logging.INFO)
 log.addHandler(handler)
 
+lastReadAddress = 0
+lastReadQuantity = 0
+
 # --------------------------------------------------------------------------- #
 # declare the sniffer
 # --------------------------------------------------------------------------- #
 class SerialSnooper:
 
-    def __init__(self, port, baud=9600, timeout=0):
+    def __init__(self, port, baud=9600, timeout=0, influx_yaml="influx_config.yml", meter_yaml="meters.yml"):
         self.port = port
         self.baud = baud
         self.timeout = timeout
@@ -58,6 +76,22 @@ class SerialSnooper:
         self.data = bytearray(0)
         self.trashdata = False
         self.trashdataf = bytearray(0)
+        
+        #***********************************************************************************************************
+        self.influx_yaml = influx_yaml
+        self.influx_map = None
+        self.influx_map_last_change = -1
+        self.influx_inteval_save = dict()
+        log.info('InfluxDB:')
+        for influx_config in sorted(self.get_influxdb(), key=lambda x:sorted(x.keys())):
+            log.info('\t {} <--> {} , Interval: {}'.format(influx_config['url'], influx_config['name'], influx_config['interval']))
+        self.meter_yaml = meter_yaml
+        self.meter_map = None
+        self.meter_map_last_change = -1
+        log.info('Meters:')
+        for meter in sorted(self.get_meters(), key=lambda x:sorted(x.keys())):
+            log.info('\t {} <--> {}'.format( meter['id'], meter['name']))
+        #***********************************************************************************************************
 
     def __enter__(self):
         return self
@@ -73,6 +107,38 @@ class SerialSnooper:
     
     def read_raw(self, n=1):
         return self.connection.read(n)
+        
+    #***********************************************************************************************************    
+    def get_meters(self):
+        assert path.exists(self.meter_yaml), 'Meter map not found: %s' % self.meter_yaml
+        if path.getmtime(self.meter_yaml) != self.meter_map_last_change:
+            try:
+                log.info('Reloading meter map as file changed')
+                new_map = yaml.load(open(self.meter_yaml), Loader=yaml.FullLoader)
+                self.meter_map = new_map['meters']
+                self.meter_map_last_change = path.getmtime(self.meter_yaml)
+            except Exception as e:
+                log.warning('Failed to re-load meter map, going on with the old one.')
+                log.warning(e)
+        return self.meter_map
+
+    def get_influxdb(self):
+        assert path.exists(self.influx_yaml), 'InfluxDB map not found: %s' % self.influx_yaml
+        if path.getmtime(self.influx_yaml) != self.influx_map_last_change:
+            try:
+                log.info('Reloading influxDB map as file changed')
+                new_map = yaml.load(open(self.influx_yaml), Loader=yaml.FullLoader)
+                self.influx_map = new_map['influxdb']
+                self.influx_map_last_change = path.getmtime(self.influx_yaml)
+                list = 0
+                for influx_config in sorted(self.get_influxdb(), key=lambda x:sorted(x.keys())):
+                    list = list + 1
+                    self.influx_inteval_save[list] = influx_config['interval']
+            except Exception as e:
+                log.warning('Failed to re-load influxDB map, going on with the old one.')
+                log.warning(e)
+        return self.influx_map
+    #***********************************************************************************************************    
 
     # --------------------------------------------------------------------------- #
     # Bufferise the data and call the decoder if the interframe timeout occur.
@@ -91,6 +157,16 @@ class SerialSnooper:
     def decodeModbus(self, data):
         modbusdata = data
         bufferIndex = 0
+        #***********************************************************************************************************
+        global lastReadAddress
+        global lastReadQuantity
+        readDataTemp = bytearray(4)
+        meters = self.get_meters()
+        influxdb = self.get_influxdb()
+        
+        #meter_id_name = dict() # mapping id to name
+        #meter_slave_id = dict()
+        #***********************************************************************************************************
 
         while True:
             unitIdentifier = 0
@@ -223,6 +299,11 @@ class SerialSnooper:
                             else:
                                 functionCodeMessage = 'Read Input Registers'
                             log.info("Master\t-> ID: {}, {}: 0x{:02x}, Read address: {}, Read Quantity: {}".format(unitIdentifier, functionCodeMessage, functionCode, readAddress, readQuantity))
+                            #***********************************************************************************************************
+                            #Se necesita almacenar address y readQuantity registrado
+                            lastReadAddress = readAddress
+                            lastReadQuantity = readQuantity
+                            #***********************************************************************************************************
                             modbusdata = modbusdata[bufferIndex:]
                             bufferIndex = 0
                     else:
@@ -261,6 +342,80 @@ class SerialSnooper:
                                     else:
                                         functionCodeMessage = 'Read Input Registers'
                                     log.info("Slave\t-> ID: {}, {}: 0x{:02x}, Read byte count: {}, Read data: [{}]".format(unitIdentifier, functionCodeMessage, functionCode, readByteCount, " ".join(["{:02x}".format(x) for x in readData])))
+                                    #***********************************************************************************************************
+                                    #Comparar ID, Address y readQuantity almacenado del último registro, y si coincide con la lista de registro, guardar en base de datos influx
+                                    for meter in meters:
+                                        if meter['id'] == unitIdentifier:
+                                            parameters = yaml.load(open(meter['type']), Loader=yaml.FullLoader)
+                                            for parameter in parameters:
+                                                if parameters[parameter][0] == lastReadAddress:
+                                                    if parameters[parameter][1] == lastReadQuantity:
+                                                        t_utc = datetime.utcnow()
+                                                        t_str = t_utc.isoformat() + 'Z'
+                                                        datas = dict()
+
+                                                        if parameters[parameter][2] == 1:
+                                                            resultado = struct.unpack(">f", bytes(readData))
+                                                        elif parameters[parameter][2] == 2:
+                                                            resultado = struct.unpack(">l", bytes(readData))
+                                                        elif parameters[parameter][2] == 3:
+                                                            resultado = struct.unpack(">H", bytes(readData))
+                                                        elif parameters[parameter][2] == 4:
+                                                            readDataTemp[0] = readData[1]
+                                                            readDataTemp[1] = readData[0]
+                                                            readDataTemp[2] = readData[3]
+                                                            readDataTemp[3] = readData[2]
+                                                            resultado = struct.unpack(">l", bytes(readDataTemp))
+                                                        elif parameters[parameter][2] == 5:
+                                                            resultado = struct.unpack(">I", bytes(readData))
+                                                        elif parameters[parameter][2] == 6:
+                                                            resultado = struct.unpack(">L", bytes(readData))
+                                                        
+                                                        #print(resultado)
+                                                        
+                                                        json_body = [
+                                                            {
+                                                                'measurement': meter['name'],
+                                                                'tags': {
+                                                                    'id': meter['id']
+                                                                },
+                                                                'time': t_str,
+                                                                'fields': {
+                                                                    #"value": 0.64
+                                                                    lastReadAddress: resultado[0]
+                                                                }
+                                                            }
+                                                        ]
+                                                        
+                                                        if len(json_body) > 0:
+
+                                                #            log.debug(json_body)
+
+                                                            list = 0
+
+                                                            for influx_config in influxdb:
+                                                                list = list + 1
+                                                                if self.influx_inteval_save[list] > 0:
+                                                                    if self.influx_inteval_save[list] <= 1:
+                                                                        self.influx_inteval_save[list] = influx_config['interval']
+
+                                                                        try:
+                                                                            DBclient = InfluxDBClient(url=influx_config['url'], token=influx_config['token'], org=influx_config['org'])
+                                                                            write_api = DBclient.write_api(write_options=SYNCHRONOUS)
+                                                                        
+                                                                            write_api.write(bucket=influx_config['dbname'],org=influx_config['org'],record=json_body)
+                                                                            log.info(t_str + ' Data written from slave %d, address %d in {}.' .format(influx_config['name']) % (unitIdentifier, lastReadAddress) )
+                                                                        except Exception as e:
+                                                                            log.error('Data not written! in {}' .format(influx_config['name']))
+                                                                            log.error(e)
+                                                                            #raise
+                                                                            pass
+                                                                    else:
+                                                                        self.influx_inteval_save[list] = self.influx_inteval_save[list] - 1
+                                                        else:
+                                                            log.warning(t_str, 'No data sent.')
+
+                                    #***********************************************************************************************************
                                     modbusdata = modbusdata[bufferIndex:]
                                     bufferIndex = 0
                             else:
@@ -808,6 +963,10 @@ def printHelp(baud, timeout):
     print("  -p, --port        select the serial port (Required)")
     print("  -b, --baudrate    set the communication baud rate, default = {} (Option)".format(baud))
     print("  -t, --timeout     override the calculated inter frame timeout, default = {}s (Option)".format(timeout))
+    #***********************************************************************************************************
+    print('  -m, --meters      YAML file containing Meter ID, name, type etc. Default "meters.yml"')
+    print('  -i, --influxdb    YAML file containing Influx Host, port, user etc. Default "influx_config.yml"')
+    #***********************************************************************************************************
     print("  -h, --help        print the documentation")
     print("")
     # print("  python3 {} -p <serial port> [-b baudrate, default={}] [-t timeout, default={}]".format(sys.argv[0], baud, timeout))
@@ -852,9 +1011,16 @@ if __name__ == "__main__":
     port = None
     baud = 9600
     timeout = None
+    #***********************************************************************************************************
+    meter_yaml = "meters.yml"
+    influx_yaml = "influx_config.yml"
+    #***********************************************************************************************************
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:],"hp:b:t:",["help", "port=", "baudrate=", "timeout="])
+        #opts, args = getopt.getopt(sys.argv[1:],"hp:b:t:",["help", "port=", "baudrate=", "timeout="])
+        #***********************************************************************************************************
+        opts, args = getopt.getopt(sys.argv[1:],"hp:b:t:m:i:",["help", "port=", "baudrate=", "timeout=", "meters=", "influxdb="])
+        #***********************************************************************************************************
     except getopt.GetoptError as e:
         log.debug(e)
         printHelp(baud, timeout)
@@ -869,6 +1035,12 @@ if __name__ == "__main__":
             baud = int(arg)
         elif opt in ("-t", "--timeout"):
             timeout = float(arg)
+        #***********************************************************************************************************
+        elif opt in ("-m", "--meters"):
+            meter_yaml = arg
+        elif opt in ("-i", "--influxdb"):
+            influx_yaml = arg
+        #***********************************************************************************************************
     
     if port == None:
         print("Serial Port not defined please use:")
@@ -878,7 +1050,10 @@ if __name__ == "__main__":
     if timeout == None:
         timeout = calcTimeout(baud)
     
-    with SerialSnooper(port, baud, timeout) as sniffer:
+    #with SerialSnooper(port, baud, timeout) as sniffer:
+    #***********************************************************************************************************
+    with SerialSnooper(port, baud, timeout, influx_yaml, meter_yaml) as sniffer:
+    #***********************************************************************************************************
         while True:
             data = sniffer.read_raw()
             sniffer.process_data(data)
